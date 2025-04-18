@@ -6,18 +6,16 @@ use bevy::render::{
 };
 
 fn main() {
-    App::new().add_plugins(DefaultPlugins).run();
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup)
+        .run();
 }
 
 #[derive(Resource)]
 struct CanvasImage(Handle<Image>);
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut images: ResMut<Assets<Image>>,
-    window: Query<&Window>,
-) {
+fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Query<&Window>) {
     commands.spawn(Camera2d);
 
     if let Ok(window) = window.get_single() {
