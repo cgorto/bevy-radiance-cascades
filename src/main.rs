@@ -2,7 +2,7 @@ use bevy::{
     asset::RenderAssetUsages,
     prelude::*,
     reflect::TypePath,
-    render::render_resource::*,
+    render::{extract_resource::ExtractResource, render_resource::*},
     sprite::{Material2d, Material2dPlugin},
 };
 
@@ -10,33 +10,18 @@ const SHADER_ASSET_PATH: &str = "shaders/gi_material.wgsl";
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, Material2dPlugin::<GIMaterial>::default()))
+        .add_plugins((DefaultPlugins))
         .add_systems(Startup, setup)
         .run();
 }
 
-#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
-struct GIMaterial {
-    #[uniform(0)]
-    color: LinearRgba,
-    #[texture(1)]
-    #[sampler(2)]
-    color_texture: Option<Handle<Image>>,
+#[derive(Resource, Clone, ExtractResource)]
+struct LightingImages {
+    texture_a: Handle<Image>,
+    texture_b: Handle<Image>,
 }
 
-impl Material2d for GIMaterial {
-    fn fragment_shader() -> ShaderRef {
-        SHADER_ASSET_PATH.into()
-    }
-}
-
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<GIMaterial>>,
-    mut images: ResMut<Assets<Image>>,
-    window: Query<&Window>,
-) {
+fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Query<&Window>) {
     commands.spawn(Camera2d);
     println!("we reach here!");
     if let Ok(window) = window.get_single() {
@@ -48,20 +33,25 @@ fn setup(
             },
             TextureDimension::D2,
             &[255, 255, 255, 255],
-            TextureFormat::Rgba8UnormSrgb,
+            TextureFormat::Rgba8Unorm,
             RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
         );
         image.texture_descriptor.usage = TextureUsages::COPY_DST
-            | TextureUsages::RENDER_ATTACHMENT
+            | TextureUsages::STORAGE_BINDING
             | TextureUsages::TEXTURE_BINDING;
 
-        let handle: Handle<Image> = images.add(image);
-        commands.spawn((
-            Mesh2d(meshes.add(Rectangle::from_size(window.resolution.size()))),
-            MeshMaterial2d(materials.add(GIMaterial {
-                color: LinearRgba::BLUE,
-                color_texture: Some(handle),
-            })),
-        ));
+        let image0 = images.add(image.clone());
+        let image1 = images.add(image);
+
+        commands.spawn(Sprite {
+            image: image0.clone(),
+            custom_size: Some(window.size()),
+            ..Default::default()
+        });
+
+        commands.insert_resource(LightingImages {
+            texture_a: image0,
+            texture_b: image1,
+        });
     }
 }
