@@ -1,47 +1,67 @@
-use bevy::color::{color_difference::EuclideanDistance, palettes::css};
-use bevy::prelude::*;
-use bevy::render::render_resource::TextureUsages;
-use bevy::render::{
-    render_asset::RenderAssetUsages,
-    render_resource::{Extent3d, TextureDimension, TextureFormat},
+use bevy::{
+    asset::RenderAssetUsages,
+    prelude::*,
+    reflect::TypePath,
+    render::render_resource::*,
+    sprite::{Material2d, Material2dPlugin},
 };
+
+const SHADER_ASSET_PATH: &str = "shaders/gi_material.wgsl";
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins((DefaultPlugins, Material2dPlugin::<GIMaterial>::default()))
         .add_systems(Startup, setup)
         .run();
 }
 
-#[derive(Resource)]
-struct CanvasImage(Handle<Image>);
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct GIMaterial {
+    #[uniform(0)]
+    color: LinearRgba,
+    #[texture(1)]
+    #[sampler(2)]
+    color_texture: Option<Handle<Image>>,
+}
 
-fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Query<&Window>) {
+impl Material2d for GIMaterial {
+    fn fragment_shader() -> ShaderRef {
+        SHADER_ASSET_PATH.into()
+    }
+}
+
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<GIMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    window: Query<&Window>,
+) {
     commands.spawn(Camera2d);
     println!("we reach here!");
     if let Ok(window) = window.get_single() {
-        println!("we've got the window");
-        let size = Extent3d {
-            width: window.resolution.width().round() as u32,
-            height: window.resolution.height().round() as u32,
-            depth_or_array_layers: 1,
-        };
-        println!("we've got the size");
         let mut image = Image::new_fill(
-            size,
+            Extent3d {
+                width: window.width().round() as u32,
+                height: window.height().round() as u32,
+                depth_or_array_layers: 1,
+            },
             TextureDimension::D2,
             &[255, 255, 255, 255],
             TextureFormat::Rgba8UnormSrgb,
             RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
         );
         image.texture_descriptor.usage = TextureUsages::COPY_DST
-            | TextureUsages::STORAGE_BINDING
+            | TextureUsages::RENDER_ATTACHMENT
             | TextureUsages::TEXTURE_BINDING;
-        println!("created image");
-        let handle = images.add(image);
 
-        commands.spawn(Sprite::from_image(handle.clone()));
-        commands.insert_resource(CanvasImage(handle));
-        println!("sys done");
+        let handle: Handle<Image> = images.add(image);
+        commands.spawn((
+            Mesh2d(meshes.add(Rectangle::from_size(window.resolution.size()))),
+            MeshMaterial2d(materials.add(GIMaterial {
+                color: LinearRgba::BLUE,
+                color_texture: Some(handle),
+            })),
+        ));
     }
 }
