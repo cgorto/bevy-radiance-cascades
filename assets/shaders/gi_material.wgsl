@@ -1,59 +1,40 @@
-
-// The shader reads the previous frame's state from the `input` texture, and writes the new state of
-// each pixel to the `output` texture. The textures are flipped each step to progress the
-// simulation.
-// Two textures are needed for the game of life as each pixel of step N depends on the state of its
-// neighbors at step N-1.
-
-@group(0) @binding(0) var input: texture_storage_2d<rgba8unorm, read>;
-
-@group(0) @binding(1) var output: texture_storage_2d<rgba8unorm, write>;
+#import bevy_core_pipeline::fullscreen_vertex_shader::fullscreenVertexOutput
 
 
+@group(0) @binding(0) var screen_texture: texture_2d<f32>;
 
-@compute @workgroup_size(8, 8, 1)
-fn init(@builtin(global_invocation_id) invocation_id: vec3<u32>, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
-    let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
+@group(0) @binding(1) var texture_sampler: sampler;
 
-    let randomNumber = randomFloat(invocation_id.y << 16u | invocation_id.x);
-    let alive = randomNumber > 0.9;
-    let color = vec4<f32>(f32(alive));
-
-    textureStore(output, location, color);
+struct PostProcessSettings {
+    resolution: vec2<f32>,
+    radius_squared: f32,
+    drawing: u32,
+    fro: vec2<f32>,
+    to: vec2<f32>,
+    color: vec3<f32>,
 }
 
-fn is_alive(location: vec2<i32>, offset_x: i32, offset_y: i32) -> i32 {
-    let value: vec4<f32> = textureLoad(input, location + vec2<i32>(offset_x, offset_y));
-    return i32(value.x);
+@group(0) @binding(2) var<uniform> settings: PostProcessSettings;
+
+
+fn sdf_line_squared(p: vec2<f32>, fro: vec2<f32>, to: vec2<f32>) -> f32 {
+    let start = p - fro;
+    let line = to - fro;
+    let len_squared = dot(line, line);
+    let t = clamp(dot(start, line) / len_squared, 0.0, 1.0);
+    let diff = start - line * t;
+    return dot(diff,diff);
 }
 
-fn count_alive(location: vec2<i32>) -> i32 {
-    return is_alive(location, -1, -1) +
-           is_alive(location, -1,  0) +
-           is_alive(location, -1,  1) +
-           is_alive(location,  0, -1) +
-           is_alive(location,  0,  1) +
-           is_alive(location,  1, -1) +
-           is_alive(location,  1,  0) +
-           is_alive(location,  1,  1);
-}
-
-@compute @workgroup_size(8, 8, 1)
-fn update(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
-    let location = vec2<i32>(i32(invocation_id.x), i32(invocation_id.y));
-
-    let n_alive = count_alive(location);
-
-    var alive: bool;
-    if (n_alive == 3) {
-        alive = true;
-    } else if (n_alive == 2) {
-        let currently_alive = is_alive(location, 0, 0);
-        alive = bool(currently_alive);
-    } else {
-        alive = false;
+@fragment
+fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    let current = textureSample(screen_texture, texture_sampler, in.uv);
+    if (settings.drawing != 0u) {
+        let coord = in.uv * settings.resolution;
+        if (sdf_line_squared(coord, settings.fro, settings.to) <= settings.radius_squared){
+            current = vec4<f32>(settings.color.rgb, 1.0);
+        }
     }
-    let color = vec4<f32>(f32(alive));
 
-    textureStore(output, location, color);
+    return current;
 }
