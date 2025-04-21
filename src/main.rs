@@ -84,6 +84,8 @@ fn update_settings(
                     setting.drawing = 0;
                 }
             }
+            setting.radius_squared = 100.0;
+            setting.color = Vec3::new(0.0, 0.0, 1.0);
         }
     }
 }
