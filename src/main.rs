@@ -1,18 +1,18 @@
 use bevy::{
     core_pipeline::{
         core_2d::graph::{Core2d, Node2d},
-        fullscreen_vertex_shader::FULLSCREEN_SHADER_HANDLE,
-        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+        fullscreen_vertex_shader::{FULLSCREEN_SHADER_HANDLE, fullscreen_shader_vertex_state},
         post_process::{self, PostProcessingPipeline},
     },
     ecs::query::QueryItem,
     prelude::*,
     render::{
-        RenderApp,
+        Render, RenderApp,
         extract_component::{
             ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
             UniformComponentPlugin,
         },
+        extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::{RenderAssetUsages, RenderAssets},
         render_graph::{
             NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode, ViewNodeRunner,
@@ -22,6 +22,7 @@ use bevy::{
             *,
         },
         renderer::{RenderContext, RenderDevice},
+        texture::GpuImage,
         view::ViewTarget,
     },
 };
@@ -33,6 +34,7 @@ fn main() {
         .add_plugins((DefaultPlugins, CascadePlugin))
         .add_systems(Startup, setup)
         .add_systems(Update, update_settings)
+        .add_systems(Render, ping_pong_canvas)
         .run();
 }
 
@@ -53,14 +55,31 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
         );
         image.texture_descriptor.usage = TextureUsages::COPY_DST
             | TextureUsages::STORAGE_BINDING
-            | TextureUsages::TEXTURE_BINDING;
+            | TextureUsages::TEXTURE_BINDING
+            | TextureUsages::RENDER_ATTACHMENT;
+
+        let a = images.add(image.clone());
+        let b = images.add(image);
 
         commands.spawn(Sprite {
-            image: images.add(image),
+            image: a.clone(),
             custom_size: Some(window.size()),
             ..Default::default()
         });
+
+        commands.insert_resource(CanvasImages {
+            front: a,
+            back: b,
+            target_front: false,
+        });
     }
+}
+
+#[derive(Resource, Clone, ExtractResource)]
+struct CanvasImages {
+    front: Handle<Image>,
+    back: Handle<Image>,
+    target_front: bool,
 }
 
 fn update_settings(
@@ -90,6 +109,16 @@ fn update_settings(
     }
 }
 
+fn ping_pong_canvas(mut canvas_images: ResMut<CanvasImages>, mut sprite: Single<&mut Sprite>) {
+    let image = if canvas_images.target_front {
+        &canvas_images.front
+    } else {
+        &canvas_images.back
+    };
+    sprite.image = image.clone();
+    canvas_images.target_front = !canvas_images.target_front;
+}
+
 struct CascadePlugin;
 
 impl Plugin for CascadePlugin {
@@ -97,6 +126,7 @@ impl Plugin for CascadePlugin {
         app.add_plugins((
             ExtractComponentPlugin::<PostProcessSettings>::default(),
             UniformComponentPlugin::<PostProcessSettings>::default(),
+            ExtractResourcePlugin::<CanvasImages>::default(),
         ));
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -119,7 +149,6 @@ impl Plugin for CascadePlugin {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
-        println!("surely init pipeline here?");
         render_app.init_resource::<PostProcessPipeline>();
     }
 }
@@ -166,14 +195,23 @@ impl ViewNode for PostProcessNode {
         let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
             return Ok(());
         };
+        let gpu_images = world.resource::<RenderAssets<GpuImage>>();
+        let canvas_images = world.resource::<CanvasImages>();
 
-        let post_process = view_target.post_process_write();
+        let front_gpu = gpu_images.get(&canvas_images.front).unwrap();
+        let back_gpu = gpu_images.get(&canvas_images.back).unwrap();
+
+        let (src_view, dst_view) = if canvas_images.target_front {
+            (&back_gpu.texture_view, &front_gpu.texture_view)
+        } else {
+            (&front_gpu.texture_view, &back_gpu.texture_view)
+        };
 
         let bind_group = render_context.render_device().create_bind_group(
             "post_process_bind_group",
             &post_process_pipeline.layout,
             &BindGroupEntries::sequential((
-                post_process.source,
+                src_view,
                 &post_process_pipeline.sampler,
                 settings_binding.clone(),
             )),
@@ -182,9 +220,12 @@ impl ViewNode for PostProcessNode {
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
             label: Some("post_process_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
-                view: post_process.destination,
+                view: dst_view,
                 resolve_target: None,
-                ops: Operations::default(),
+                ops: Operations {
+                    load: LoadOp::Load,
+                    store: StoreOp::Store,
+                },
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
@@ -248,7 +289,7 @@ impl FromWorld for PostProcessPipeline {
                     // It can be anything as long as it matches here and in the shader.
                     entry_point: "fragment".into(),
                     targets: vec![Some(ColorTargetState {
-                        format: TextureFormat::bevy_default(),
+                        format: TextureFormat::Rgba8Unorm,
                         blend: None,
                         write_mask: ColorWrites::ALL,
                     })],
