@@ -16,7 +16,8 @@ use bevy::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::{RenderAssetUsages, RenderAssets},
         render_graph::{
-            NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode, ViewNodeRunner,
+            Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode,
+            ViewNodeRunner,
         },
         render_resource::{
             binding_types::{sampler, texture_2d, uniform_buffer},
@@ -50,7 +51,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
                 depth_or_array_layers: 1,
             },
             TextureDimension::D2,
-            &[255, 255, 255, 255],
+            &[255, 255, 255, 0],
             TextureFormat::Rgba8Unorm,
             RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
         );
@@ -170,19 +171,12 @@ struct PostProcessSettings {
     color: Vec3,
 }
 
-impl ViewNode for PostProcessNode {
-    type ViewQuery = (
-        &'static ViewTarget,
-        &'static PostProcessSettings,
-        &'static DynamicUniformIndex<PostProcessSettings>,
-    );
-
-    fn run(
+impl Node for PostProcessNode {
+    fn run<'w>(
         &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, _post_process_settings, settings_index): QueryItem<Self::ViewQuery>,
-        world: &World,
+        graph: &mut RenderGraphContext,
+        render_context: &mut RenderContext<'w>,
+        world: &'w World,
     ) -> Result<(), NodeRunError> {
         let post_process_pipeline = world.resource::<PostProcessPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
@@ -196,6 +190,7 @@ impl ViewNode for PostProcessNode {
         let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
             return Ok(());
         };
+
         let gpu_images = world.resource::<RenderAssets<GpuImage>>();
         let canvas_images = world.resource::<CanvasImages>();
 
@@ -212,32 +207,11 @@ impl ViewNode for PostProcessNode {
             "post_process_bind_group",
             &post_process_pipeline.layout,
             &BindGroupEntries::sequential((
-                BindingResource::TextureView(src_view),
+                src_view,
                 &post_process_pipeline.sampler,
                 settings_binding.clone(),
-            )),
-        );
-
-        let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
-            label: Some("post_process_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: dst_view,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Load,
-                    store: StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-
-        render_pass.set_render_pipeline(pipeline);
-        render_pass.set_bind_group(0, &bind_group, &[settings_index.index()]);
-        render_pass.draw(0..3, 0..1);
-
-        Ok(())
+            ))
+        )
     }
 }
 
