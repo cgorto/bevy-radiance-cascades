@@ -5,9 +5,10 @@ use bevy::{
         post_process::{self, PostProcessingPipeline},
     },
     ecs::query::QueryItem,
+    log::LogPlugin,
     prelude::*,
     render::{
-        Render, RenderApp,
+        Extract, Render, RenderApp,
         extract_component::{
             ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
             UniformComponentPlugin,
@@ -34,7 +35,7 @@ fn main() {
         .add_plugins((DefaultPlugins, CascadePlugin))
         .add_systems(Startup, setup)
         .add_systems(Update, update_settings)
-        .add_systems(Render, ping_pong_canvas)
+        .add_systems(ExtractSchedule, ping_pong_canvas)
         .run();
 }
 
@@ -211,7 +212,7 @@ impl ViewNode for PostProcessNode {
             "post_process_bind_group",
             &post_process_pipeline.layout,
             &BindGroupEntries::sequential((
-                src_view,
+                BindingResource::TextureView(src_view),
                 &post_process_pipeline.sampler,
                 settings_binding.clone(),
             )),
