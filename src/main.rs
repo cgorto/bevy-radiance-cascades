@@ -36,7 +36,7 @@ fn main() {
         .add_plugins((DefaultPlugins, CascadePlugin))
         .add_systems(Startup, setup)
         .add_systems(Update, update_settings)
-        .add_systems(ExtractSchedule, ping_pong_canvas)
+        .add_systems(Update, ping_pong_canvas)
         .run();
 }
 
@@ -136,7 +136,7 @@ impl Plugin for CascadePlugin {
         };
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<PostProcessNode>>(Core2d, PostProcessLabel)
+            .add_render_graph_node::<PostProcessNode>(Core2d, PostProcessLabel)
             .add_render_graph_edges(
                 Core2d,
                 (
@@ -161,7 +161,7 @@ struct PostProcessLabel;
 #[derive(Default)]
 struct PostProcessNode;
 
-#[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
+#[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType, AsBindGroup)]
 struct PostProcessSettings {
     resolution: Vec2,
     radius_squared: f32,
@@ -172,11 +172,11 @@ struct PostProcessSettings {
 }
 
 impl Node for PostProcessNode {
-    fn run<'w>(
+    fn run(
         &self,
-        graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext<'w>,
-        world: &'w World,
+        _graph: &mut RenderGraphContext,
+        render_context: &mut RenderContext,
+        world: &World,
     ) -> Result<(), NodeRunError> {
         let post_process_pipeline = world.resource::<PostProcessPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
@@ -210,8 +210,29 @@ impl Node for PostProcessNode {
                 src_view,
                 &post_process_pipeline.sampler,
                 settings_binding.clone(),
-            ))
-        )
+            )),
+        );
+
+        let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
+            label: Some("post_process_pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: dst_view,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Load,
+                    store: StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        render_pass.set_render_pipeline(pipeline);
+        render_pass.set_bind_group(0, &bind_group, &[]);
+        render_pass.draw(0..3, 0..1);
+
+        Ok(())
     }
 }
 
@@ -238,7 +259,7 @@ impl FromWorld for PostProcessPipeline {
                     // The sampler that will be used to sample the screen texture
                     sampler(SamplerBindingType::Filtering),
                     // The settings uniform that will control the effect
-                    uniform_buffer::<PostProcessSettings>(true),
+                    uniform_buffer::<PostProcessSettings>(false),
                 ),
             ),
         );
