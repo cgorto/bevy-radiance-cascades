@@ -6,7 +6,6 @@ use bevy::{
     },
     ecs::query::QueryItem,
     input::gamepad::RawGamepadButtonChangedEvent,
-    math::VectorSpace,
     prelude::*,
     render::{
         Render, RenderApp,
@@ -309,7 +308,7 @@ impl Node for RaymarchNode {
                 view: dst_view,
                 resolve_target: None,
                 ops: Operations {
-                    load: LoadOp::Clear(LinearRgba::ZERO.into()),
+                    load: LoadOp::Load,
                     store: StoreOp::Store,
                 },
             })],
