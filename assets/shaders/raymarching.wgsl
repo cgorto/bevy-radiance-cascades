@@ -41,7 +41,7 @@ fn raymarch(uv: vec2<f32>) -> vec4<f32> {
         let ray_direction = vec2<f32>(cos(angle), -sin(angle)) / settings.resolution;
         
         for (var step = 0u; step < settings.max_steps; step += 1u) {
-            let sample_uv = uv + ray_direction * f32(step);
+            let sample_uv = uv + (ray_direction * f32(step));
 
             if (out_of_bounds(sample_uv)) {
                 break;

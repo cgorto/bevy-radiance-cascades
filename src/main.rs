@@ -123,7 +123,7 @@ fn ping_pong_canvas(mut canvas_images: ResMut<CanvasImages>, mut sprite: Single<
     let image = if canvas_images.target_front {
         &canvas_images.front
     } else {
-        &canvas_images.back
+        &canvas_images.front
     };
     sprite.image = image.clone();
     // canvas_images.target_front = !canvas_images.target_front;
