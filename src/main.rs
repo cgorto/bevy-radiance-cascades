@@ -126,7 +126,7 @@ fn ping_pong_canvas(mut canvas_images: ResMut<CanvasImages>, mut sprite: Single<
         &canvas_images.back
     };
     sprite.image = image.clone();
-    canvas_images.target_front = !canvas_images.target_front;
+    // canvas_images.target_front = !canvas_images.target_front;
 }
 
 struct CascadePlugin;
