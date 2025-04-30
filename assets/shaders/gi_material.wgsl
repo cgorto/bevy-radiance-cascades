@@ -15,7 +15,6 @@ struct PostProcessSettings {
 
 @group(0) @binding(2) var<uniform> settings: PostProcessSettings;
 
-
 fn sdf_line_squared(p: vec2<f32>, fro: vec2<f32>, to: vec2<f32>) -> f32 {
     let start = p - fro;
     let line = to - fro;
@@ -23,6 +22,10 @@ fn sdf_line_squared(p: vec2<f32>, fro: vec2<f32>, to: vec2<f32>) -> f32 {
     let t = clamp(dot(start, line) / len_squared, 0.0, 1.0);
     let diff = start - line * t;
     return dot(diff,diff);
+}
+
+fn out_of_bounds(uv: vec2<f32>) -> bool {
+    return uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
 }
 
 @fragment
