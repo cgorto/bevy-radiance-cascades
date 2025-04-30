@@ -24,9 +24,9 @@ fn out_of_bounds(uv: vec2<f32>) -> bool {
 }
 
 
-fn raymarch(uv: vec2<f32>) -> @location(0) vec4<f32> {
+fn raymarch(uv: vec2<f32>) -> vec4<f32> {
     var current = textureSample(screen_texture, texture_sampler, uv);
-    if (current[3] > 0.1) {
+    if (current.a > 0.1) {
         return current;
     }
 
@@ -34,20 +34,20 @@ fn raymarch(uv: vec2<f32>) -> @location(0) vec4<f32> {
     let tau_raycount = TAU * reciprocal_raycount;
 
     let noise = rand(uv);
-    let radiance = vec4<f32>(0.0);
+    var radiance = vec4<f32>(0.0);
 
-    for (var i = 0; i < settings.ray_count; i += 1) {
+    for (var i = 0u; i < settings.ray_count; i += 1u) {
         let angle = tau_raycount * (f32(i) + noise);
-        let ray_direction = vec2<f32>(cos(angle), -sin(angle)) / size;
+        let ray_direction = vec2<f32>(cos(angle), -sin(angle)) / settings.resolution;
         
-        for (var step = 0; step < settings.max_steps; step += 1) {
+        for (var step = 0u; step < settings.max_steps; step += 1u) {
             let sample_uv = uv + ray_direction * f32(step);
 
             if (out_of_bounds(sample_uv)) {
                 break;
             }
 
-            let sample_light = textureSample(scene_texture,texture_sample, sample_uv);
+            let sample_light = textureSample(screen_texture,texture_sampler, sample_uv);
 
             if (sample_light.a > 0.5) {
                 radiance += sample_light;
@@ -63,6 +63,6 @@ fn raymarch(uv: vec2<f32>) -> @location(0) vec4<f32> {
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let final_color = raymarch(in.uv);
-
+    // return final_color;
     return vec4<f32>(final_color.xyz, 1.0);
 }
