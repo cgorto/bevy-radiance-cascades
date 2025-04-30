@@ -29,7 +29,7 @@ use bevy::{
     },
 };
 
-const CANVAS_SHADER_ASSET_PATH: &str = "shaders/gi_material.wgsl";
+const CANVAS_SHADER_ASSET_PATH: &str = "shaders/canvas.wgsl";
 const RAYMARCH_SHADER_ASSET_PATH: &str = "shaders/raymarching.wgsl";
 
 fn main() {
@@ -45,10 +45,16 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
     commands.spawn((
         Camera2d,
         PostProcessSettings::default(),
-        RaymarchSettings::default(),
+        //initializing the raymarch uniforms with values here for testing
+        RaymarchSettings {
+            resolution: Vec2::default(),
+            ray_count: 16,
+            max_steps: 128,
+        },
     ));
     println!("we reach here!");
     if let Ok(window) = window.get_single() {
+        //Initialize an empty image for input to our shaders, we are just making it the same size as the screen
         let mut image = Image::new_fill(
             Extent3d {
                 width: window.width().round() as u32,
@@ -56,10 +62,11 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
                 depth_or_array_layers: 1,
             },
             TextureDimension::D2,
-            &[255, 255, 255, 0],
+            &[0, 0, 0, 0],
             TextureFormat::Rgba8Unorm,
             RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
         );
+        //I think having all of these flags is overkill, we should just need RenderAttachment and TextureBinding
         image.texture_descriptor.usage = TextureUsages::COPY_DST
             | TextureUsages::STORAGE_BINDING
             | TextureUsages::TEXTURE_BINDING
@@ -73,7 +80,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
             custom_size: Some(window.size()),
             ..Default::default()
         });
-
+        //Here we're initializing our ping pong rendering
         commands.insert_resource(CanvasImages {
             front: a,
             back: b,
@@ -94,11 +101,13 @@ fn update_settings(
     window: Query<&Window>,
     mut settings: Query<(&mut PostProcessSettings, &mut RaymarchSettings)>,
 ) {
+    //This system is run every frame. Eventually I'll add a GUI that allows you to toggle shader settings. This is fine for now.
     if let Ok(window) = window.get_single() {
         for (mut canvas_setting, mut raymarch_setting) in &mut settings {
             if let Some(cursor_pos) = window.cursor_position() {
                 canvas_setting.resolution = window.resolution.size();
                 raymarch_setting.resolution = window.resolution.size();
+                //First frame of drawing
                 if mouse.just_pressed(MouseButton::Left) {
                     canvas_setting.drawing = 1;
                     canvas_setting.from = cursor_pos;
@@ -111,10 +120,12 @@ fn update_settings(
                     canvas_setting.drawing = 0;
                 }
             }
+            //Brush size and color for the shader uniforms
             canvas_setting.radius_squared = 100.0;
             canvas_setting.color = Vec3::new(0.0, 0.0, 1.0);
-            raymarch_setting.max_steps = 32;
-            raymarch_setting.ray_count = 8;
+            //Raymarching uniforms here
+            raymarch_setting.max_steps = 128;
+            raymarch_setting.ray_count = 16;
         }
     }
 }
@@ -144,7 +155,9 @@ impl Plugin for CascadePlugin {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
-
+        //We add our custom render graph nodes here.
+        // Most of this is boilerplate from the custom post process effect example, so we *probably* have more stuff than we need
+        // I don't think we need most of Core2d, but since we're rendering a sprite I'm keeping it all just in case.
         render_app
             .add_render_graph_node::<CanvasNode>(Core2d, CanvasPassLabel)
             .add_render_graph_node::<RaymarchNode>(Core2d, RaymarchLabel)
