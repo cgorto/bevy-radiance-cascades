@@ -5,6 +5,7 @@ use bevy::{
         post_process::{self, PostProcessingPipeline},
     },
     ecs::query::QueryItem,
+    input::gamepad::RawGamepadButtonChangedEvent,
     prelude::*,
     render::{
         Render, RenderApp,
@@ -29,6 +30,7 @@ use bevy::{
 };
 
 const CANVAS_SHADER_ASSET_PATH: &str = "shaders/gi_material.wgsl";
+const RAYMARCH_SHADER_ASSET_PATH: &str = "shaders/raymarchingwgsl";
 
 fn main() {
     App::new()
@@ -40,7 +42,11 @@ fn main() {
 }
 
 fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Query<&Window>) {
-    commands.spawn((Camera2d, PostProcessSettings::default()));
+    commands.spawn((
+        Camera2d,
+        PostProcessSettings::default(),
+        RaymarchSettings::default(),
+    ));
     println!("we reach here!");
     if let Ok(window) = window.get_single() {
         let mut image = Image::new_fill(
@@ -86,26 +92,29 @@ struct CanvasImages {
 fn update_settings(
     mouse: Res<ButtonInput<MouseButton>>,
     window: Query<&Window>,
-    mut settings: Query<&mut PostProcessSettings>,
+    mut settings: Query<(&mut PostProcessSettings, &mut RaymarchSettings)>,
 ) {
     if let Ok(window) = window.get_single() {
-        for mut setting in &mut settings {
+        for (mut canvas_setting, mut raymarch_setting) in &mut settings {
             if let Some(cursor_pos) = window.cursor_position() {
-                setting.resolution = window.resolution.size();
+                canvas_setting.resolution = window.resolution.size();
+                raymarch_setting.resolution = window.resolution.size();
                 if mouse.just_pressed(MouseButton::Left) {
-                    setting.drawing = 1;
-                    setting.from = cursor_pos;
-                    setting.to = cursor_pos;
+                    canvas_setting.drawing = 1;
+                    canvas_setting.from = cursor_pos;
+                    canvas_setting.to = cursor_pos;
                 } else if mouse.pressed(MouseButton::Left) {
-                    setting.drawing = 1;
-                    setting.from = setting.to;
-                    setting.to = cursor_pos;
+                    canvas_setting.drawing = 1;
+                    canvas_setting.from = canvas_setting.to;
+                    canvas_setting.to = cursor_pos;
                 } else {
-                    setting.drawing = 0;
+                    canvas_setting.drawing = 0;
                 }
             }
-            setting.radius_squared = 100.0;
-            setting.color = Vec3::new(0.0, 0.0, 1.0);
+            canvas_setting.radius_squared = 100.0;
+            canvas_setting.color = Vec3::new(0.0, 0.0, 1.0);
+            raymarch_setting.max_steps = 32;
+            raymarch_setting.ray_count = 8;
         }
     }
 }
@@ -127,6 +136,8 @@ impl Plugin for CascadePlugin {
         app.add_plugins((
             ExtractComponentPlugin::<PostProcessSettings>::default(),
             UniformComponentPlugin::<PostProcessSettings>::default(),
+            ExtractComponentPlugin::<RaymarchSettings>::default(),
+            UniformComponentPlugin::<RaymarchSettings>::default(),
             ExtractResourcePlugin::<CanvasImages>::default(),
         ));
 
@@ -136,11 +147,13 @@ impl Plugin for CascadePlugin {
 
         render_app
             .add_render_graph_node::<CanvasNode>(Core2d, CanvasPassLabel)
+            .add_render_graph_node::<RaymarchNode>(Core2d, RaymarchLabel)
             .add_render_graph_edges(
                 Core2d,
                 (
                     Node2d::PostProcessing,
                     CanvasPassLabel,
+                    RaymarchLabel,
                     Node2d::EndMainPassPostProcessing,
                 ),
             );
@@ -151,6 +164,7 @@ impl Plugin for CascadePlugin {
             return;
         };
         render_app.init_resource::<CanvasPipeline>();
+        render_app.init_resource::<RaymarchPipeline>();
     }
 }
 
@@ -174,6 +188,13 @@ struct PostProcessSettings {
     from: Vec2,
     to: Vec2,
     color: Vec3,
+}
+
+#[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType, AsBindGroup)]
+struct RaymarchSettings {
+    resolution: Vec2,
+    ray_count: u32,
+    max_steps: u32,
 }
 
 impl Node for CanvasNode {
@@ -247,15 +268,15 @@ impl Node for RaymarchNode {
         render_context: &mut RenderContext,
         world: &World,
     ) -> Result<(), NodeRunError> {
-        let post_process_pipeline = world.resource::<CanvasPipeline>();
+        let raymarch_pipeline = world.resource::<RaymarchPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
 
-        let Some(pipeline) = pipeline_cache.get_render_pipeline(post_process_pipeline.pipeline_id)
+        let Some(pipeline) = pipeline_cache.get_render_pipeline(raymarch_pipeline.pipeline_id)
         else {
             return Ok(());
         };
 
-        let settings_uniforms = world.resource::<ComponentUniforms<PostProcessSettings>>();
+        let settings_uniforms = world.resource::<ComponentUniforms<RaymarchSettings>>();
         let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
             return Ok(());
         };
@@ -272,17 +293,17 @@ impl Node for RaymarchNode {
         };
 
         let bind_group = render_context.render_device().create_bind_group(
-            "post_process_bind_group",
-            &post_process_pipeline.layout,
+            "raymarch_bind_group",
+            &raymarch_pipeline.layout,
             &BindGroupEntries::sequential((
                 src_view,
-                &post_process_pipeline.sampler,
+                &raymarch_pipeline.sampler,
                 settings_binding.clone(),
             )),
         );
 
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
-            label: Some("post_process_pass"),
+            label: Some("raymarch_pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
                 view: dst_view,
                 resolve_target: None,
@@ -387,7 +408,7 @@ impl FromWorld for RaymarchPipeline {
 
         // We need to define the bind group layout used for our pipeline
         let layout = render_device.create_bind_group_layout(
-            "post_process_bind_group_layout",
+            "raymarch_bind_group_layout",
             &BindGroupLayoutEntries::sequential(
                 // The layout entries will only be visible in the fragment stage
                 ShaderStages::FRAGMENT,
@@ -397,7 +418,7 @@ impl FromWorld for RaymarchPipeline {
                     // The sampler that will be used to sample the screen texture
                     sampler(SamplerBindingType::Filtering),
                     // The settings uniform that will control the effect
-                    uniform_buffer::<PostProcessSettings>(false),
+                    uniform_buffer::<RaymarchSettings>(false),
                 ),
             ),
         );
@@ -406,13 +427,13 @@ impl FromWorld for RaymarchPipeline {
         let sampler = render_device.create_sampler(&SamplerDescriptor::default());
 
         // Get the shader handle
-        let shader = world.load_asset(CANVAS_SHADER_ASSET_PATH);
+        let shader = world.load_asset(RAYMARCH_SHADER_ASSET_PATH);
 
         let pipeline_id = world
             .resource_mut::<PipelineCache>()
             // This will add the pipeline to the cache and queue its creation
             .queue_render_pipeline(RenderPipelineDescriptor {
-                label: Some("post_process_pipeline".into()),
+                label: Some("raymarch_pipeline".into()),
                 layout: vec![layout.clone()],
                 // This will setup a fullscreen triangle for the vertex state
                 vertex: fullscreen_shader_vertex_state(),
