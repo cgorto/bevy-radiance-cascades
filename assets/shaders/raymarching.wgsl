@@ -63,6 +63,6 @@ fn raymarch(uv: vec2<f32>) -> vec4<f32> {
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let final_color = raymarch(in.uv);
-    return final_color;
-    // return vec4<f32>(final_color.xyz, 1.0);
+    // return final_color;
+    return vec4<f32>(final_color.xyz, 1.0);
 }

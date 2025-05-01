@@ -317,14 +317,20 @@ impl Node for RaymarchNode {
         let gpu_images = world.resource::<RenderAssets<GpuImage>>();
         let canvas_images = world.resource::<CanvasImages>();
         let raymarch_images = world.resource::<RaymarchImages>();
-
-        let front_gpu = gpu_images.get(&canvas_images.front).unwrap();
-        let back_gpu = gpu_images.get(&canvas_images.back).unwrap();
-
-        let (src_view, dst_view) = if !canvas_images.target_front {
-            (&back_gpu.texture_view, &front_gpu.texture_view)
+        // The source view should be the same texture that we just wrote to in the canvas pass
+        let src_view = if canvas_images.target_front {
+            &gpu_images.get(&canvas_images.front).unwrap().texture_view
         } else {
-            (&front_gpu.texture_view, &back_gpu.texture_view)
+            &gpu_images.get(&canvas_images.back).unwrap().texture_view
+        };
+        // Here is where we begin to incorporate the second ping pong. Any subsequent passes should use this
+        // We need two ping pongs to keep what we've drawn separate from the output of the GI passes
+        // The GI passes need the undrawn area to have a low alpha, but drawing the lighting will necessarily give the pixels a higher alpha.
+        // There's most certainly a better what to approach this but this is what I've done.
+        let dst_view = if raymarch_images.ping {
+            &gpu_images.get(&raymarch_images.a).unwrap().texture_view
+        } else {
+            &gpu_images.get(&raymarch_images.b).unwrap().texture_view
         };
 
         let bind_group = render_context.render_device().create_bind_group(
