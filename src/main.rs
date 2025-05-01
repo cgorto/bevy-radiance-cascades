@@ -73,6 +73,8 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
             | TextureUsages::RENDER_ATTACHMENT;
 
         let a = images.add(image.clone());
+        let a_raymarch = images.add(image.clone());
+        let b_raymarch = images.add(image.clone());
         let b = images.add(image);
 
         commands.spawn(Sprite {
@@ -83,8 +85,8 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
         //Initializing our two ping pong resources for rendering.
         //We need two since we want the lighting not to feed back in to what we've drawn.
         commands.insert_resource(RaymarchImages {
-            a: a.clone(),
-            b: b.clone(),
+            a: a_raymarch,
+            b: b_raymarch,
             ping: false,
         });
 
