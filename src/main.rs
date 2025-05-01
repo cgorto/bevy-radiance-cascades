@@ -1,23 +1,18 @@
 use bevy::{
     core_pipeline::{
         core_2d::graph::{Core2d, Node2d},
-        fullscreen_vertex_shader::{FULLSCREEN_SHADER_HANDLE, fullscreen_shader_vertex_state},
-        post_process::{self, PostProcessingPipeline},
+        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
     },
-    ecs::query::QueryItem,
-    input::gamepad::RawGamepadButtonChangedEvent,
     prelude::*,
     render::{
-        Render, RenderApp,
+        RenderApp,
         extract_component::{
-            ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
-            UniformComponentPlugin,
+            ComponentUniforms, ExtractComponent, ExtractComponentPlugin, UniformComponentPlugin,
         },
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::{RenderAssetUsages, RenderAssets},
         render_graph::{
             Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode,
-            ViewNodeRunner,
         },
         render_resource::{
             binding_types::{sampler, texture_2d, uniform_buffer},
@@ -25,7 +20,6 @@ use bevy::{
         },
         renderer::{RenderContext, RenderDevice},
         texture::GpuImage,
-        view::ViewTarget,
     },
 };
 
@@ -53,7 +47,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
         },
     ));
     println!("we reach here!");
-    if let Ok(window) = window.get_single() {
+    if let Ok(window) = window.single() {
         //Initialize an empty image for input to our shaders, we are just making it the same size as the screen
         let mut image = Image::new_fill(
             Extent3d {
