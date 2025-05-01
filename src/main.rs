@@ -80,6 +80,14 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Quer
             custom_size: Some(window.size()),
             ..Default::default()
         });
+        //Initializing our two ping pong resources for rendering.
+        //We need two since we want the lighting not to feed back in to what we've drawn.
+        commands.insert_resource(RaymarchImages {
+            a: a.clone(),
+            b: b.clone(),
+            ping: false,
+        });
+
         //Here we're initializing our ping pong rendering
         commands.insert_resource(CanvasImages {
             front: a,
@@ -94,6 +102,13 @@ struct CanvasImages {
     front: Handle<Image>,
     back: Handle<Image>,
     target_front: bool,
+}
+
+#[derive(Resource, Clone, ExtractResource)]
+struct RaymarchImages {
+    a: Handle<Image>,
+    b: Handle<Image>,
+    ping: bool,
 }
 
 fn update_settings(
@@ -124,20 +139,25 @@ fn update_settings(
             canvas_setting.radius_squared = 100.0;
             canvas_setting.color = Vec3::new(0.0, 0.0, 1.0);
             //Raymarching uniforms here
-            raymarch_setting.max_steps = 128;
+            raymarch_setting.max_steps = 256;
             raymarch_setting.ray_count = 16;
         }
     }
 }
 
-fn ping_pong_canvas(mut canvas_images: ResMut<CanvasImages>, mut sprite: Single<&mut Sprite>) {
-    let image = if canvas_images.target_front {
-        &canvas_images.front
+fn ping_pong_canvas(
+    mut canvas_images: ResMut<CanvasImages>,
+    mut raymarch_images: ResMut<RaymarchImages>,
+    mut sprite: Single<&mut Sprite>,
+) {
+    let image = if raymarch_images.ping {
+        &raymarch_images.a
     } else {
-        &canvas_images.front
+        &raymarch_images.b
     };
     sprite.image = image.clone();
-    // canvas_images.target_front = !canvas_images.target_front;
+    canvas_images.target_front = !canvas_images.target_front;
+    raymarch_images.ping = !raymarch_images.ping;
 }
 
 struct CascadePlugin;
@@ -150,6 +170,7 @@ impl Plugin for CascadePlugin {
             ExtractComponentPlugin::<RaymarchSettings>::default(),
             UniformComponentPlugin::<RaymarchSettings>::default(),
             ExtractResourcePlugin::<CanvasImages>::default(),
+            ExtractResourcePlugin::<RaymarchImages>::default(),
         ));
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -295,6 +316,7 @@ impl Node for RaymarchNode {
         };
         let gpu_images = world.resource::<RenderAssets<GpuImage>>();
         let canvas_images = world.resource::<CanvasImages>();
+        let raymarch_images = world.resource::<RaymarchImages>();
 
         let front_gpu = gpu_images.get(&canvas_images.front).unwrap();
         let back_gpu = gpu_images.get(&canvas_images.back).unwrap();
