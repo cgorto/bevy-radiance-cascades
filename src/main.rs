@@ -157,11 +157,19 @@ fn side_panel_stroke_control(
             ui.label("Stroke Radius:");
 
             let mut radius = canvas_settings.radius_squared.sqrt();
-            let slider_response = ui.add(egui::Slider::new(&mut radius, 1.0..=50.0).text("Radius"));
+            let radius_slider_response =
+                ui.add(egui::Slider::new(&mut radius, 1.0..=50.0).text("Radius"));
 
-            if slider_response.changed() {
+            if radius_slider_response.changed() {
                 canvas_settings.radius_squared = radius * radius;
             }
+            ui.separator();
+
+            ui.label("Raymarch Steps");
+            ui.add(egui::Slider::new(&mut raymarch_settings.max_steps, 1..=512).integer());
+            ui.separator();
+            ui.label("Amount of Rays");
+            ui.add(egui::Slider::new(&mut raymarch_settings.ray_count, 1..=256).integer());
         });
     }
 }
