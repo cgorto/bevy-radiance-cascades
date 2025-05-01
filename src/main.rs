@@ -11,9 +11,7 @@ use bevy::{
         },
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::{RenderAssetUsages, RenderAssets},
-        render_graph::{
-            Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode,
-        },
+        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel},
         render_resource::{
             binding_types::{sampler, texture_2d, uniform_buffer},
             *,
@@ -23,15 +21,21 @@ use bevy::{
     },
 };
 
+use bevy_egui::{EguiContextPass, EguiContextSettings, EguiContexts, EguiPlugin, egui};
+
 const CANVAS_SHADER_ASSET_PATH: &str = "shaders/canvas.wgsl";
 const RAYMARCH_SHADER_ASSET_PATH: &str = "shaders/raymarching.wgsl";
 
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, CascadePlugin))
+        .add_plugins(EguiPlugin {
+            enable_multipass_for_primary_context: true,
+        })
         .add_systems(Startup, setup)
         .add_systems(Update, update_settings)
         .add_systems(Update, ping_pong_canvas)
+        .add_systems(EguiContextPass, side_panel_stroke_control)
         .run();
 }
 
@@ -113,7 +117,7 @@ fn update_settings(
     mut settings: Query<(&mut PostProcessSettings, &mut RaymarchSettings)>,
 ) {
     //This system is run every frame. Eventually I'll add a GUI that allows you to toggle shader settings. This is fine for now.
-    if let Ok(window) = window.get_single() {
+    if let Ok(window) = window.single() {
         for (mut canvas_setting, mut raymarch_setting) in &mut settings {
             if let Some(cursor_pos) = window.cursor_position() {
                 canvas_setting.resolution = window.resolution.size();
@@ -138,6 +142,29 @@ fn update_settings(
             raymarch_setting.max_steps = 256;
             raymarch_setting.ray_count = 16;
         }
+    }
+}
+fn side_panel_stroke_control(
+    mut contexts: EguiContexts,
+    mut settings: Query<(&mut PostProcessSettings, &mut RaymarchSettings)>,
+) {
+    if let Ok((mut canvas_settings, mut raymarch_settings)) = settings.single_mut() {
+        let ctx = contexts.ctx_mut();
+        egui::SidePanel::left("left_panel").show(ctx, |ui| {
+            ui.label("Stroke Color:");
+            ui.color_edit_button_rgb(canvas_settings.color.as_mut());
+
+            ui.separator();
+
+            ui.label("Stroke Radius:");
+
+            let mut radius = canvas_settings.radius_squared.sqrt();
+            let slider_response = ui.add(egui::Slider::new(&mut radius, 1.0..=50.0).text("Radius"));
+
+            if slider_response.changed() {
+                canvas_settings.radius_squared = radius * radius;
+            }
+        });
     }
 }
 
