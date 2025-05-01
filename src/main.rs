@@ -42,7 +42,11 @@ fn main() {
 fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, window: Query<&Window>) {
     commands.spawn((
         Camera2d,
-        PostProcessSettings::default(),
+        PostProcessSettings {
+            color: Vec3::new(0.0, 0.0, 1.0),
+            radius_squared: 100.0,
+            ..Default::default()
+        },
         //initializing the raymarch uniforms with values here for testing
         RaymarchSettings {
             resolution: Vec2::default(),
@@ -135,12 +139,6 @@ fn update_settings(
                     canvas_setting.drawing = 0;
                 }
             }
-            //Brush size and color for the shader uniforms
-            canvas_setting.radius_squared = 100.0;
-            canvas_setting.color = Vec3::new(0.0, 0.0, 1.0);
-            //Raymarching uniforms here
-            raymarch_setting.max_steps = 256;
-            raymarch_setting.ray_count = 16;
         }
     }
 }
